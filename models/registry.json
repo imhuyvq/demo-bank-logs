@@ -1,0 +1,42 @@
+{
+  "active_model_id": "qos-forest-1.0",
+  "models": [
+    {
+      "model_id": "qos-forest-1.0",
+      "path": "versions/qos-forest-1.0.joblib",
+      "trained_at": "2026-07-22T03:14:45.804798+00:00",
+      "threshold": -0.05353768147806201,
+      "version": "1.0",
+      "display_name": "QoS Forest 1.0",
+      "best_params": {
+        "n_estimators": 200,
+        "contamination": 0.04,
+        "max_features": 0.8
+      },
+      "metrics_val": {
+        "f1": 0.896551724137931
+      },
+      "metrics_test_preview": {
+        "f1": 0.8333333333333334
+      },
+      "feature_columns": [
+        "response_time_log1p",
+        "status_class",
+        "is_5xx",
+        "is_4xx",
+        "request_rate",
+        "hour_sin",
+        "hour_cos",
+        "dow_sin",
+        "dow_cos",
+        "endpoint_freq",
+        "method_code",
+        "bytes_sent_log1p",
+        "ip_error_rate",
+        "ip_avg_latency"
+      ],
+      "sklearn_version": "1.9.0",
+      "model_type": "IsolationForest"
+    }
+  ]
+}

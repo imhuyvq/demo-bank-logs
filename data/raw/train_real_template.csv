@@ -1,0 +1,6 @@
+timestamp,client_ip,endpoint_uri,http_method,response_time_ms,status_code,bytes_sent,is_anomaly,anomaly_type
+2026-01-10T08:15:00,10.12.3.45,/api/v1/auth/login,POST,95.2,200,512,0,normal
+2026-01-10T08:15:02,10.12.3.45,/api/v1/auth/otp/verify,POST,88.0,401,256,1,spam
+2026-01-10T08:16:10,10.20.1.8,/api/v1/accounts/balance,GET,72.0,200,2048,0,normal
+2026-01-10T08:17:00,10.20.1.9,/api/v1/transfers/napas,POST,6200.0,504,1024,1,high_latency
+2026-01-10T08:18:00,10.30.2.3,/api/v1/payments/bill,POST,980.0,500,300,1,system_error

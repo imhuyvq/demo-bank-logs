@@ -79,3 +79,4 @@ Bật **Lưu kết quả vào PostgreSQL** ở sidebar Streamlit khi chạy phá
 - [`docs/SRS_AI_Module.md`](docs/SRS_AI_Module.md)
 - [`docs/theory_isolation_forest.md`](docs/theory_isolation_forest.md)
 - [`reports/bao_cao_thuc_tap.md`](reports/bao_cao_thuc_tap.md)
+# demo-bank-logs

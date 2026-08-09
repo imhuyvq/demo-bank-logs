@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qos-anomaly"
+version = "1.0.0"
+description = "AI phát hiện bất thường cho hệ thống đánh giá chất lượng dịch vụ"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "numpy>=1.26.4",
+    "pandas>=2.2.2",
+    "scikit-learn>=1.5.1",
+    "joblib>=1.4.2",
+    "matplotlib>=3.9.0",
+    "seaborn>=0.13.2",
+    "plotly>=5.22.0",
+    "streamlit>=1.36.0",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlalchemy>=2.0.31",
+    "psycopg2-binary>=2.9.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "httpx>=0.27.0", "jupyter>=1.0.0", "ipykernel>=6.29.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
