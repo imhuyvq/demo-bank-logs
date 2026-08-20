@@ -1,6 +1,6 @@
 # Phát hiện bất thường QoS
 
-Đồ án phát hiện log HTTP bất thường bằng **Isolation Forest**. Phạm vi cố ý nhỏ: dataset mô phỏng, một model, một giao diện Streamlit và PostgreSQL Docker chỉ để lưu kết quả. Không API, biểu đồ hay báo cáo sinh tự động.
+Đồ án phát hiện log HTTP bất thường bằng **Isolation Forest**. Có dashboard Streamlit gồm phát hiện, trực quan, lịch sử PostgreSQL và thông tin model. PostgreSQL Docker chỉ lưu kết quả. Không API, model registry hay báo cáo sinh tự động.
 
 ## Chức năng
 
@@ -26,7 +26,7 @@ Mở app tại URL Streamlit in ra terminal.
 ## Cấu trúc
 
 ```text
-app/streamlit_app.py            giao diện một trang
+app/streamlit_app.py            dashboard 4 tab: phát hiện, trực quan, SQL, model
 data/raw/train_logs_1000.csv    dataset mẫu mô phỏng
 scripts/generate_dataset.py     sinh dữ liệu
 scripts/train_model.py          train và lưu model

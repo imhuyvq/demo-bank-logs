@@ -36,3 +36,16 @@ def save_results(results: pd.DataFrame, url: str = DATABASE_URL) -> int:
     with create_engine(url).begin() as connection:
         connection.execute(statement, rows)
     return len(rows)
+
+
+def load_recent_results(limit: int = 200, url: str = DATABASE_URL) -> pd.DataFrame:
+    """Đọc lịch sử prediction mới nhất để hiển thị trên Streamlit."""
+    statement = text("""
+        SELECT id, timestamp, client_ip, endpoint_uri, response_time_ms,
+               status_code, anomaly_score, is_anomaly, predicted_at
+        FROM detection_results
+        ORDER BY predicted_at DESC, id DESC
+        LIMIT :limit
+    """)
+    with create_engine(url).connect() as connection:
+        return pd.read_sql(statement, connection, params={"limit": limit})

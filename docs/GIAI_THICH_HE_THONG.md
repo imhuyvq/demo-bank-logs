@@ -30,13 +30,13 @@ flowchart TD
     I --> J[(PostgreSQL Docker tùy chọn)]
 ```
 
-Không có API, model registry, nhiều model, biểu đồ phức tạp, EDA hay báo cáo sinh tự động. Các phần này không cần cho mục tiêu demo và dễ làm đồ án khó giải thích.
+Không có API, model registry, nhiều model, EDA hay báo cáo sinh tự động. Dashboard giữ bốn tab cần demo: phát hiện, trực quan kết quả, lịch sử PostgreSQL và thông tin model.
 
 ## 3. Cấu trúc file còn lại
 
 | Vai trò | File |
 |---|---|
-| Giao diện một trang | `app/streamlit_app.py` |
+| Dashboard 4 tab | `app/streamlit_app.py` |
 | Cấu hình/path | `src/qos_anomaly/config.py` |
 | Sinh data mô phỏng | `src/qos_anomaly/data/generator.py` |
 | Đọc/làm sạch CSV | `src/qos_anomaly/data/loader.py` |
@@ -249,15 +249,12 @@ Chạy:
 make app
 ```
 
-Một trang có:
+Dashboard có bốn tab:
 
-1. chọn CSV mẫu hoặc upload CSV;
-2. xem số dòng gốc/hợp lệ/bị loại;
-3. chỉnh threshold;
-4. chạy Detection;
-5. xem tổng số, số anomaly, bảng kết quả;
-6. tải CSV kết quả;
-7. tùy chọn lưu kết quả vào PostgreSQL.
+1. **Phát hiện:** chọn CSV mẫu, upload CSV hoặc nhập tay; kiểm tra số dòng; chỉnh threshold; chạy model; lọc/tải CSV kết quả; tùy chọn lưu PostgreSQL.
+2. **Trực quan:** anomaly score theo thời gian, HTTP status, latency theo log, tỷ lệ nhãn dự đoán của batch gần nhất.
+3. **Lịch sử SQL:** tải batch kết quả đã lưu từ PostgreSQL; chọn số dòng muốn xem.
+4. **Thông tin model:** thuật toán, threshold, tham số, F1 mô phỏng và danh sách feature.
 
 Không cần bấm lưu DB để model chạy.
 
@@ -973,6 +970,7 @@ Không thêm deep learning, Kafka, Redis hoặc microservice trước khi có lo
 | Nút chạy model ở đâu? | [`app/streamlit_app.py`](../app/streamlit_app.py) | khối `st.button("Chạy Isolation Forest")` |
 | Checkbox lưu DB ở đâu? | [`app/streamlit_app.py`](../app/streamlit_app.py) | `save_to_db` |
 | Insert PostgreSQL ở đâu? | [`src/qos_anomaly/db/repository.py`](../src/qos_anomaly/db/repository.py) | `save_results()` |
+| Đọc lịch sử SQL ở đâu? | [`src/qos_anomaly/db/repository.py`](../src/qos_anomaly/db/repository.py) | `load_recent_results()` |
 | Bảng PostgreSQL định nghĩa ở đâu? | [`sql/schema.sql`](../sql/schema.sql) | `CREATE TABLE detection_results` |
 | Docker DB cấu hình ở đâu? | [`docker-compose.yml`](../docker-compose.yml) | service `db` |
 | Lệnh chạy project ở đâu? | [`Makefile`](../Makefile) | `data`, `train`, `eval`, `db-up`, `app`, `test` |
@@ -1317,7 +1315,25 @@ with create_engine(url).begin() as connection:
 
 Các token `:client_ip`, `:endpoint_uri` là bind parameter. SQLAlchemy/psycopg2 gửi value riêng với câu SQL, không ghép chuỗi user input. `begin()` bảo đảm commit toàn batch hoặc rollback khi lỗi.
 
-### 25.18 Schema PostgreSQL
+### 25.18 Đọc lịch sử PostgreSQL
+
+**Nguồn:** [`src/qos_anomaly/db/repository.py`](../src/qos_anomaly/db/repository.py) — `load_recent_results()`
+
+```python
+statement = text("""
+    SELECT id, timestamp, client_ip, endpoint_uri, response_time_ms,
+           status_code, anomaly_score, is_anomaly, predicted_at
+    FROM detection_results
+    ORDER BY predicted_at DESC, id DESC
+    LIMIT :limit
+""")
+with create_engine(url).connect() as connection:
+    return pd.read_sql(statement, connection, params={"limit": limit})
+```
+
+`LIMIT :limit` cũng là bind parameter. Tab **Lịch sử SQL** gọi hàm này khi bấm `Tải lịch sử từ SQL`.
+
+### 25.19 Schema PostgreSQL
 
 **Nguồn:** [`sql/schema.sql`](../sql/schema.sql)
 
@@ -1337,7 +1353,7 @@ CREATE TABLE IF NOT EXISTS detection_results (
 
 `TIMESTAMPTZ` giữ timestamp có timezone. `BIGSERIAL` tự sinh ID. `NOT NULL` ngăn lưu record thiếu field cốt lõi.
 
-### 25.19 PostgreSQL Docker
+### 25.20 PostgreSQL Docker
 
 **Nguồn:** [`docker-compose.yml`](../docker-compose.yml)
 
