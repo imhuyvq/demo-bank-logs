@@ -1,7 +1,7 @@
 """Đọc và validate dữ liệu log từ CSV/JSON."""
 from __future__ import annotations
 
-import json
+
 from pathlib import Path
 
 import pandas as pd
@@ -62,27 +62,14 @@ def clean_logs(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_logs(path: str | Path, require_labels: bool = False) -> pd.DataFrame:
-    """Đọc file log CSV hoặc JSON và trả DataFrame đã làm sạch."""
+    """Đọc CSV và trả DataFrame đã làm sạch."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Không tìm thấy file: {path}")
+    if path.suffix.lower() != ".csv":
+        raise ValueError("Chỉ hỗ trợ file CSV")
 
-    suffix = path.suffix.lower()
-    if suffix == ".csv":
-        df = pd.read_csv(path)
-    elif suffix == ".json":
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict) and "records" in data:
-            df = pd.DataFrame(data["records"])
-        elif isinstance(data, list):
-            df = pd.DataFrame(data)
-        else:
-            raise ValueError("JSON phải là mảng records hoặc object có key 'records'")
-    else:
-        raise ValueError(f"Định dạng không hỗ trợ: {suffix}. Dùng .csv hoặc .json")
-
+    df = pd.read_csv(path)
     if require_labels:
         validate_log_schema(_normalize_columns(df.copy()), require_labels=True)
-
     return clean_logs(df)

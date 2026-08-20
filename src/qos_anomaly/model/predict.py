@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import joblib
-import numpy as np
 import pandas as pd
 
 from qos_anomaly.config import MODEL_BUNDLE_PATH
@@ -35,8 +34,9 @@ def predict_dataframe(
 
     fb = FeatureBuilder.from_dict(bundle["feature_builder"])
     X = fb.transform(work).values
-    X_scaled = bundle["scaler"].transform(X)
-    scores = anomaly_scores(bundle["model"], X_scaled)
+    # Bundle cũ có scaler; bundle mới bỏ bước này vì Isolation Forest không cần scale.
+    model_input = bundle["scaler"].transform(X) if "scaler" in bundle else X
+    scores = anomaly_scores(bundle["model"], model_input)
 
     thr = threshold if threshold is not None else bundle["threshold"]
     is_anomaly = (scores >= thr).astype(int)
@@ -46,15 +46,3 @@ def predict_dataframe(
     result["is_anomaly_pred"] = is_anomaly
     result["predicted_anomaly"] = is_anomaly.astype(bool)
     return result
-
-
-def predict_logs(
-    path: str | Path,
-    bundle: dict[str, Any] | None = None,
-    threshold: float | None = None,
-) -> pd.DataFrame:
-    """Dự đoán từ file CSV/JSON."""
-    from qos_anomaly.data.loader import load_logs
-
-    df = load_logs(path)
-    return predict_dataframe(df, bundle=bundle, threshold=threshold)

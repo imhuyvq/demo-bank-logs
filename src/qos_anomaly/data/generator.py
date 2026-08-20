@@ -1,7 +1,7 @@
 """Sinh dataset log API ngân hàng (mô phỏng gần thực tế) có nhãn đánh giá."""
 from __future__ import annotations
 
-import json
+
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,7 +13,7 @@ from qos_anomaly.config import (
     LABEL_COLUMNS,
     LOG_COLUMNS,
     RANDOM_STATE,
-    SAMPLE_LOGS_JSON_PATH,
+
     SAMPLE_LOGS_PATH,
     ensure_directories,
 )
@@ -203,16 +203,9 @@ def generate_logs(
     return df[LOG_COLUMNS + LABEL_COLUMNS]
 
 
-def save_dataset(
-    df: pd.DataFrame,
-    csv_path: Path | None = None,
-    json_path: Path | None = None,
-) -> tuple[Path, Path]:
+def save_dataset(df: pd.DataFrame, path: Path = SAMPLE_LOGS_PATH) -> Path:
+    """Lưu dataset mẫu dưới dạng CSV."""
     ensure_directories()
-    csv_out = csv_path or SAMPLE_LOGS_PATH
-    json_out = json_path or SAMPLE_LOGS_JSON_PATH
-    csv_out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(csv_out, index=False)
-    with open(json_out, "w", encoding="utf-8") as f:
-        json.dump(df.to_dict(orient="records"), f, ensure_ascii=False, indent=2)
-    return csv_out, json_out
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+    return path

@@ -1,11 +1,10 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: qos_anomaly_db
     environment:
+      POSTGRES_DB: qos_anomaly
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: secret
-      POSTGRES_DB: qos_anomaly
     ports:
       - "5432:5432"
     volumes:

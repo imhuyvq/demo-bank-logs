@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from itertools import product
+
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import f1_score
-from sklearn.preprocessing import StandardScaler
+
 
 from qos_anomaly.config import (
     DEFAULT_CONTAMINATION,
@@ -72,52 +72,29 @@ def find_best_threshold(
     return best_t, best_f1
 
 
-def tune_isolation_forest(
+def train_isolation_forest(
     X_train: np.ndarray,
     X_val: np.ndarray,
     y_val: np.ndarray,
 ) -> tuple[IsolationForest, dict[str, Any], float, float]:
-    """Grid search nhỏ trên validation F1."""
-    param_grid = {
-        "n_estimators": [200, 300, 500],
-        "contamination": [0.04, 0.06, 0.08],
-        "max_features": [0.8, 1.0],
+    """Huấn luyện một Isolation Forest, rồi chọn ngưỡng có F1 validation cao nhất."""
+    params: dict[str, Any] = {
+        "n_estimators": DEFAULT_N_ESTIMATORS,
+        "contamination": DEFAULT_CONTAMINATION,
+        "max_features": 1.0,
     }
-    best_model: IsolationForest | None = None
-    best_params: dict[str, Any] = {}
-    best_threshold = 0.0
-    best_f1 = -1.0
-
-    for n_est, contam, max_feat in product(
-        param_grid["n_estimators"],
-        param_grid["contamination"],
-        param_grid["max_features"],
-    ):
-        model = IsolationForest(
-            n_estimators=n_est,
-            contamination=contam,
-            max_features=max_feat,
-            max_samples=DEFAULT_MAX_SAMPLES,
-            random_state=RANDOM_STATE,
-            n_jobs=-1,
-        )
-        model.fit(X_train)
-        val_scores = anomaly_scores(model, X_val)
-        threshold, f1 = find_best_threshold(val_scores, y_val)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_threshold = threshold
-            best_params = {
-                "n_estimators": n_est,
-                "contamination": contam,
-                "max_features": max_feat,
-            }
-            best_model = model
-
-    if best_model is None:
-        raise RuntimeError("Không tìm được mô hình phù hợp")
-
-    return best_model, best_params, best_threshold, best_f1
+    model = IsolationForest(
+        n_estimators=DEFAULT_N_ESTIMATORS,
+        contamination=DEFAULT_CONTAMINATION,
+        max_features=1.0,
+        max_samples=DEFAULT_MAX_SAMPLES,
+        random_state=RANDOM_STATE,
+        n_jobs=-1,
+    )
+    # Isolation Forest chỉ học ma trận đặc trưng, không dùng nhãn y_train.
+    model.fit(X_train)
+    threshold, val_f1 = find_best_threshold(anomaly_scores(model, X_val), y_val)
+    return model, params, threshold, val_f1
 
 
 def train_pipeline(
@@ -138,24 +115,19 @@ def train_pipeline(
     X_val = feature_builder.transform(val_df).values
     X_test = feature_builder.transform(test_df).values
 
-    scaler = StandardScaler()
-    X_train_s = scaler.fit_transform(X_train)
-    X_val_s = scaler.transform(X_val)
-    X_test_s = scaler.transform(X_test)
-
     y_val = val_df["is_anomaly"].values.astype(int)
     y_test = test_df["is_anomaly"].values.astype(int)
 
-    model, best_params, threshold, val_f1 = tune_isolation_forest(X_train_s, X_val_s, y_val)
+    # Cây quyết định không dựa trên khoảng cách, nên không cần StandardScaler.
+    model, best_params, threshold, val_f1 = train_isolation_forest(X_train, X_val, y_val)
 
-    test_scores = anomaly_scores(model, X_test_s)
+    test_scores = anomaly_scores(model, X_test)
     test_pred = (test_scores >= threshold).astype(int)
     test_f1 = float(f1_score(y_test, test_pred, zero_division=0))
 
     trained_at = datetime.now(timezone.utc).isoformat()
     bundle = {
         "model": model,
-        "scaler": scaler,
         "feature_builder": feature_builder.to_dict(),
         "feature_columns": FEATURE_COLUMNS,
         "threshold": threshold,
@@ -170,25 +142,10 @@ def train_pipeline(
 
     joblib.dump(bundle, output_path)
 
-    from qos_anomaly.model.registry import ModelRegistry
-
-    registry = ModelRegistry(
-        models_dir=output_path.parent,
-        legacy_bundle_path=output_path,
-    )
-    version = registry.register_bundle(bundle, set_active=True)
-
-    logger.info(
-        "Đã lưu model tại %s | model_id=%s | best_params=%s | val_f1=%.4f",
-        output_path,
-        version.model_id,
-        best_params,
-        val_f1,
-    )
+    logger.info("Đã lưu model tại %s | val_f1=%.4f", output_path, val_f1)
 
     return {
         "output_path": str(output_path),
-        "model_id": version.model_id,
         "best_params": best_params,
         "threshold": threshold,
         "val_f1": val_f1,

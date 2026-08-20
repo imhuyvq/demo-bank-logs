@@ -1,96 +1,119 @@
-"""Streamlit demo — phát hiện bất thường QoS ngân hàng."""
+"""Demo một trang: nạp log, chạy Isolation Forest, xem kết quả."""
 from __future__ import annotations
 
-import bootstrap  # noqa: F401
+import sys
+from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
-from runtime import get_service
-from state import (
-    THRESHOLD_SLIDER_KEY,
-    ensure_threshold_slider,
-    init_session_state,
-    reset_threshold_to_default,
-)
-from ui import ensure_app_styles, title_with_tip
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
-st.set_page_config(
-    page_title="QoS Anomaly · Ngân hàng",
-    page_icon=":material/shield:",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-init_session_state()
-ensure_app_styles()
+from qos_anomaly.config import MODEL_BUNDLE_PATH, SAMPLE_LOGS_PATH
+from qos_anomaly.data.loader import clean_logs
+from qos_anomaly.db.repository import save_results
+from qos_anomaly.model.predict import load_bundle, predict_dataframe
 
-service = get_service()
+st.set_page_config(page_title="QoS anomaly detection", page_icon=":material/security:", layout="wide")
+st.title("Phát hiện bất thường QoS")
+st.caption("Isolation Forest trên log HTTP mô phỏng. Kết quả là nhị phân: bình thường hoặc bất thường.")
 
-page = st.navigation(
-    [
-        st.Page("app_pages/detect.py", title="Phát hiện", icon=":material/search:"),
-        st.Page("app_pages/visualize.py", title="Trực quan", icon=":material/bar_chart:"),
-        st.Page("app_pages/history.py", title="Lịch sử", icon=":material/history:"),
-        st.Page("app_pages/info.py", title="Thông tin", icon=":material/info:"),
-    ],
-    position="top",
-)
 
-ready, message = service.check_model_ready()
-if not ready:
-    st.error(message, icon=":material/error:")
-    st.caption("Chạy `python3 scripts/train_model.py`")
+@st.cache_resource
+def get_bundle() -> dict:
+    """Tải model một lần cho mỗi Streamlit session process."""
+    return load_bundle(MODEL_BUNDLE_PATH)
+
+
+@st.cache_data
+def load_sample() -> pd.DataFrame:
+    """Nạp dataset mẫu từ project."""
+    return pd.read_csv(SAMPLE_LOGS_PATH)
+
+
+def display_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Chỉ giữ cột cần xem khi demo."""
+    columns = [
+        "timestamp", "client_ip", "endpoint_uri", "http_method", "response_time_ms",
+        "status_code", "anomaly_score", "is_anomaly_pred",
+    ]
+    return df[[column for column in columns if column in df.columns]]
+
+
+try:
+    bundle = get_bundle()
+except FileNotFoundError:
+    st.error("Chưa có model. Chạy `make train` rồi mở lại app.")
     st.stop()
 
-info = service.get_model_info()
-bundle = service.get_bundle()
-default_thr = float(bundle["threshold"])
-ensure_threshold_slider(default_thr)
-db_ok = service.check_db()
-
 with st.sidebar:
-    st.markdown("**:material/shield: QoS Anomaly**")
-    st.badge(
-        info.get("display_name") or "Sẵn sàng",
-        icon=":material/check_circle:",
-        color="green",
+    st.header("Thiết lập")
+    source = st.radio("Nguồn log", ["Bộ mẫu", "Tải CSV"], index=0)
+    default_threshold = float(bundle["threshold"])
+    threshold = st.number_input("Ngưỡng bất thường", value=default_threshold, format="%.6f")
+    save_to_db = st.checkbox("Lưu kết quả vào PostgreSQL")
+    st.caption("Điểm số ≥ ngưỡng được gắn nhãn bất thường.")
+
+if source == "Bộ mẫu":
+    raw_df = load_sample()
+    st.caption(f"Nguồn: `{SAMPLE_LOGS_PATH.name}` · {len(raw_df):,} dòng mô phỏng")
+else:
+    upload = st.file_uploader("Chọn file CSV", type="csv")
+    if upload is None:
+        st.info("Tải CSV có 7 cột log bắt buộc để bắt đầu.")
+        st.stop()
+    raw_df = pd.read_csv(upload)
+
+try:
+    input_df = clean_logs(raw_df)
+except ValueError as error:
+    st.error(str(error))
+    st.stop()
+
+st.subheader("1. Dữ liệu đầu vào")
+left, right, third = st.columns(3)
+left.metric("Dòng gốc", len(raw_df))
+right.metric("Dòng hợp lệ", len(input_df))
+third.metric("Dòng loại bỏ", len(raw_df) - len(input_df))
+st.dataframe(display_table(input_df.head(20)), hide_index=True, height=260)
+
+st.subheader("2. Phát hiện")
+if st.button("Chạy Isolation Forest", type="primary", icon=":material/play_arrow:"):
+    result = predict_dataframe(input_df, bundle, threshold)
+    if save_to_db:
+        try:
+            st.success(f"Đã lưu {save_results(result)} dòng vào PostgreSQL.")
+        except Exception as error:
+            st.error(f"Không lưu được PostgreSQL: {error}")
+    st.session_state["result"] = result
+
+result = st.session_state.get("result")
+if result is not None:
+    anomalies = int(result["is_anomaly_pred"].sum())
+    st.subheader("3. Kết quả")
+    a, b, c = st.columns(3)
+    a.metric("Tổng log", len(result))
+    b.metric("Bất thường", anomalies)
+    c.metric("Tỷ lệ", f"{100 * anomalies / len(result):.1f}%")
+
+    view = st.segmented_control("Hiển thị", ["Tất cả", "Chỉ bất thường"], default="Tất cả")
+    shown = result if view == "Tất cả" else result[result["is_anomaly_pred"] == 1]
+    st.dataframe(display_table(shown), hide_index=True, height=420)
+    st.download_button(
+        "Tải kết quả CSV",
+        result.to_csv(index=False).encode("utf-8"),
+        "ket_qua_phat_hien.csv",
+        "text/csv",
+        icon=":material/download:",
     )
-    st.caption(f"`{info.get('model_id', '—')}`")
 
-    if page.title == "Phát hiện":
-        st.divider()
-        title_with_tip(
-            "**Ngưỡng**",
-            "Điểm số ≥ ngưỡng → bất thường. Thấp hơn = nhạy hơn.",
-            tip_key="tip_threshold",
-        )
-        span = max(abs(default_thr), 0.05)
-        threshold = st.slider(
-            "Ngưỡng",
-            min_value=round(default_thr - span, 4),
-            max_value=round(default_thr + span, 4),
-            step=0.001,
-            format="%.4f",
-            key=THRESHOLD_SLIDER_KEY,
-            label_visibility="collapsed",
-        )
-        if abs(threshold - default_thr) >= 1e-9:
-            st.button(
-                "Đặt lại",
-                icon=":material/restart_alt:",
-                type="tertiary",
-                width="stretch",
-                on_click=reset_threshold_to_default,
-                args=(default_thr,),
-            )
-        else:
-            st.caption(f"Mặc định `{default_thr:.4f}`")
-
-        st.toggle("Lưu PostgreSQL", key="save_to_db")
-        if st.session_state.save_to_db and not db_ok:
-            st.warning("Chưa kết nối DB")
-
-    elif page.title == "Lịch sử":
-        st.caption("PostgreSQL" + (" · OK" if db_ok else " · tắt"))
-
-st.markdown(f"**{page.icon} {page.title}**")
-page.run()
+with st.expander("Ý nghĩa kết quả"):
+    st.markdown(
+        """
+- **Isolation Forest** cô lập các log khác biệt bằng cây ngẫu nhiên; log bị cô lập sớm có điểm bất thường cao.
+- Model dùng 14 feature từ latency, HTTP status, tốc độ request, thời gian, endpoint và IP.
+- `anomaly_score` càng cao càng bất thường. Model không phân loại spam, latency cao hay system error.
+- Dataset là mô phỏng. Xem `docs/GIAI_THICH_HE_THONG.md` trước khi dùng số liệu trong báo cáo.
+        """
+    )
